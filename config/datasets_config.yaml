@@ -1,0 +1,121 @@
+datasets:
+  # NÍVEL 0: Independentes (sem dependências)
+  olist_products:
+    file_pattern: "olist_products_dataset.parquet"
+    lookback_days: 30
+    target_rows_per_day: 10000
+    key_columns:
+      - product_id
+    date_column: null
+    level: 0
+    dependencies: []
+  
+  olist_sellers:
+    file_pattern: "olist_sellers_dataset.parquet"
+    lookback_days: 30
+    target_rows_per_day: 3000
+    key_columns:
+      - seller_id
+    date_column: null
+    level: 0
+    dependencies: []
+  
+  olist_customers:
+    file_pattern: "olist_customers_dataset.parquet"
+    lookback_days: 30
+    target_rows_per_day: 52000
+    key_columns:
+      - customer_id
+      - customer_unique_id
+    date_column: null
+    level: 0
+    dependencies: []
+  
+  # NÍVEL 1: Dependem de customers (para correlação de CEP)
+  olist_geolocation:
+    file_pattern: "olist_geolocation_dataset.parquet"
+    lookback_days: 30
+    target_rows_per_day: 5000
+    key_columns:
+      - geolocation_zip_code_prefix
+    date_column: null
+    level: 1
+    dependencies:
+      - dataset: olist_customers
+        foreign_key: geolocation_zip_code_prefix
+        reference_key: customer_zip_code_prefix
+        sample_strategy: random
+  
+  # NÍVEL 1: Orders (depende de customers)
+  olist_orders:
+    file_pattern: "olist_orders_dataset.parquet"
+    lookback_days: 5
+    target_rows_per_day: 315000
+    key_columns:
+      - order_id
+    date_column: order_purchase_timestamp
+    level: 1
+    dependencies:
+      - dataset: olist_customers
+        foreign_key: customer_id
+        reference_key: customer_id
+        sample_strategy: random
+  
+  # NÍVEL 2: Dependem de orders
+  olist_order_items:
+    file_pattern: "olist_order_items_dataset.parquet"
+    lookback_days: 5
+    target_rows_per_day: 620000
+    key_columns:
+      - order_id
+      - order_item_id
+    date_column: shipping_limit_date
+    level: 2
+    dependencies:
+      - dataset: olist_orders
+        foreign_key: order_id
+        reference_key: order_id
+        sample_strategy: recent
+      - dataset: olist_products
+        foreign_key: product_id
+        reference_key: product_id
+        sample_strategy: random
+      - dataset: olist_sellers
+        foreign_key: seller_id
+        reference_key: seller_id
+        sample_strategy: random
+  
+  olist_order_payments:
+    file_pattern: "olist_order_payments_dataset.parquet"
+    lookback_days: 5
+    target_rows_per_day: 315000
+    key_columns:
+      - order_id
+    date_column: null
+    level: 2
+    dependencies:
+      - dataset: olist_orders
+        foreign_key: order_id
+        reference_key: order_id
+        sample_strategy: recent
+  
+  olist_order_reviews:
+    file_pattern: "olist_order_reviews_dataset.parquet"
+    lookback_days: 5
+    target_rows_per_day: 250000
+    key_columns:
+      - review_id
+      - order_id
+    date_column: null
+    level: 2
+    dependencies:
+      - dataset: olist_orders
+        foreign_key: order_id
+        reference_key: order_id
+        sample_strategy: recent
+        
+generation:
+  engine: "polars"
+  spark_threshold_rows: 10000000
+  output_format: "parquet"
+  compression: "snappy"
