@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.Python
+# Virtual Environment - IMPORTANTE!
+venv/
+env/
+ENV/
+.venv/
+# Pyenv
+.python-version
+# Data files - NÃO commitar!
+src/data/
+*.csv
+*.parquet
+# IDE
+.vscode/
+.idea/
+# OS
+.DS_Store
+# Logs
+*.log
+
