@@ -6,7 +6,7 @@ from data_utils.log_config import logs_config
 logger = logs_config()
 
 class StatisticalProfiler:
-    """Analisa perfil estatístico de dados históricos"""
+    """Check statistical profile for historical data"""
     
     def __init__(self, data_dir: Path, lookback_days: int = 5):
         self.data_dir = data_dir
@@ -18,14 +18,14 @@ class StatisticalProfiler:
         date_column: Optional[str] = None
     ) -> pl.DataFrame:
         """
-        Carrega dados históricos.
+        Load historical data from Parquet files matching the pattern.
         
         Args:
-            file_pattern: Padrão do arquivo (ex: "orders*.parquet")
-            date_column: Coluna de data (não usado, mantido para compatibilidade)
+            file_pattern: File pattern to match (ex: "orders*.parquet")
+            date_column: Date column (not used, kept for compatibility)
         
         Returns:
-            DataFrame com dados históricos
+            DataFrame with historical data
         """
         logger.info(f"Loading historical data: {file_pattern}")
         
@@ -51,7 +51,7 @@ class StatisticalProfiler:
     
     def analyze_column(self, df: pl.DataFrame, col: str) -> Dict[str, Any]:
         """
-        Analisa uma coluna e retorna perfil estatístico.
+        Analyze a column and return its statistical profile.
         """
         # Verificar se DataFrame está vazio
         if len(df) == 0:
@@ -93,34 +93,34 @@ class StatisticalProfiler:
                 })
         
         elif col_type == pl.Utf8:
-            # Texto/Categórico/ID
+            # Text/Categorical/ID
             unique_values = df[col].drop_nulls().unique()
             n_unique = len(unique_values)
             total_non_null = len(df[col].drop_nulls())
             
-            # ========== ADICIONAR DETECÇÃO DE ID ==========
+            # ========== ADD DETECTION OF ID ==========
             
-            # Detectar se é um ID (coluna única ou quase única)
+            # Detect if it's an ID (unique or almost unique column)
             is_id = False
             
-            # Critérios para ser considerado ID:
-            # 1. Nome contém 'id' (case insensitive)
-            # 2. Valores são únicos ou quase únicos (>95% únicos)
+            # Criteria to be considered an ID:
+            # 1. Name contains 'id' (case insensitive)
+            # 2. Values are unique or almost unique (>95% unique)
             if '_id' in col.lower() or col.lower().endswith('id'):
                 is_id = True
             elif total_non_null > 0 and (n_unique / total_non_null) > 0.95:
                 is_id = True
             
             if is_id:
-                # Tratar como ID único
-                # Analisar padrão dos IDs
+                # Treat as unique ID
+                # Analyze ID pattern (length, character set)
                 sample_ids = unique_values.head(100).to_list()
                 
-                # Verificar se são UUIDs ou hashes
+                # Check if they look like UUIDs or hashes
                 if sample_ids and len(sample_ids[0]) == 32:
-                    id_pattern = "hash32"  # Hash MD5 ou similar
+                    id_pattern = "hash32"  # Hash MD5 or simillar
                 elif sample_ids and len(sample_ids[0]) == 36:
-                    id_pattern = "uuid"  # UUID com hífens
+                    id_pattern = "uuid"  # UUID with dashes
                 elif sample_ids and len(sample_ids[0]) == 64:
                     id_pattern = "hash64"  # Hash SHA256
                 else:
@@ -137,14 +137,14 @@ class StatisticalProfiler:
             # ============================================
             
             elif n_unique < 100:
-                # Categórico
+                # Categorical
                 profile.update({
                     "type": "categorical",
                     "n_unique": n_unique,
                     "unique_values": unique_values.to_list(),
                 })
             else:
-                # Texto livre
+                # Free text
                 try:
                     avg_len = df[col].drop_nulls().str.len_chars().mean()
                 except AttributeError:
@@ -165,13 +165,13 @@ class StatisticalProfiler:
                 })
         
         elif col_type in [pl.Date, pl.Datetime]:
-            # Data/Datetime
+            # Date/Datetime
             non_null = df[col].drop_nulls()
             if len(non_null) > 0:
                 min_date = non_null.min()
                 max_date = non_null.max()
                 
-                # Calcular range em dias
+                # Calculate range in days, handling both date and datetime types
                 try:
                     if isinstance(min_date, datetime) and isinstance(max_date, datetime):
                         range_days = (max_date - min_date).days
@@ -190,7 +190,7 @@ class StatisticalProfiler:
                 })
         
         elif col_type == pl.Boolean:
-            # Booleano
+            # Boolean
             true_count = (df[col] == True).sum()
             profile.update({
                 "type": "boolean",
@@ -199,7 +199,7 @@ class StatisticalProfiler:
             })
         
         else:
-            # Tipo desconhecido
+            # Unkown type
             profile.update({
                 "type": "unknown",
                 "info": f"Unsupported dtype: {col_type}"
@@ -227,7 +227,7 @@ class StatisticalProfiler:
             "columns": {}
         }
         
-        # Analisar cada coluna
+        # Check each column
         for col in df.columns:
             logger.debug(f"Analyzing column: {col}")
             profile["columns"][col] = self.analyze_column(df, col)
@@ -253,7 +253,7 @@ class StatisticalProfiler:
         df = self.load_historical_data(file_pattern, date_column)
         profile = self.analyze_dataset(df)
         
-        # Adicionar metadados
+        # Add metadata about the analysis
         profile["metadata"] = {
             "analyzed_at": datetime.now().isoformat(),
             "lookback_days": self.lookback_days,
@@ -269,27 +269,27 @@ class StatisticalProfiler:
         date_column: str
     ) -> Optional[date]:
         """
-        Obtém a data máxima dos dados históricos.
-        
+        Obtain the maximum date from historical data.
+
         Args:
-            file_pattern: Padrão do arquivo
-            date_column: Coluna de data
+            file_pattern: File pattern to match (e.g., "orders*.parquet")
+            date_column: Date column to analyze
         
         Returns:
-            Data máxima ou None
+            Maximum date found, or None if not found
         """
         if not date_column:
             return None
         
         logger.info(f"Getting max date from {file_pattern}, column: {date_column}")
         
-        # Buscar arquivos
+        # Search for files matching the pattern
         files = list(self.data_dir.glob(file_pattern))
         
         if not files:
             raise FileNotFoundError(f"No files found matching: {file_pattern}")
         
-        # Ler apenas a coluna de data de todos os arquivos
+        # Read only the date column from all files and find the maximum date
         max_dates = []
         
         for file in files:
@@ -298,16 +298,16 @@ class StatisticalProfiler:
                 file_max = df[date_column].max()
                 
                 if file_max:
-                    # Converter para date dependendo do tipo
+                    # Convert to date if it's datetime
                     if isinstance(file_max, str):
-                        # String: parsear
+                        # String: parse to datetime
                         file_max = datetime.fromisoformat(file_max.replace('Z', '+00:00'))
                     
                     if isinstance(file_max, datetime):
-                        # Datetime: extrair date
+                        # Datetime: extract date part
                         file_max = file_max.date()
                     
-                    # Se já for date, usar diretamente
+                    # If it's already a date, keep as is
                     max_dates.append(file_max)
                     
             except Exception as e:
@@ -317,7 +317,7 @@ class StatisticalProfiler:
             logger.warning("No valid dates found")
             return None
         
-        # Pegar a data máxima
+        # Get the overall maximum date
         overall_max = max(max_dates)
         
         logger.info(f"Max date found: {overall_max}")

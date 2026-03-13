@@ -1,12 +1,12 @@
 import polars as pl
 from pathlib import Path
-from typing import Dict, List, Optional
-from datetime import date, timedelta
+from typing import List, Optional
+from datetime import date
 from data_utils.log_config import logs_config
 logger = logs_config()
 
 class ReferenceDataManager:
-    """Gerencia dados de referência para manter integridade referencial"""
+    """Manages reference data to maintain referential integrity"""
     
     def __init__(self, data_dir: Path, synthetic_dir: Path, cache_days: int = 7):
         self.data_dir = data_dir
@@ -21,12 +21,12 @@ class ReferenceDataManager:
         target_date: Optional[date] = None
     ) -> List[str]:
         """
-        Obtém lista de chaves válidas de um dataset de referência.
-        PRIORIZA dados sintéticos recentes sobre históricos.
+        Returns a list of valid keys from a reference dataset.
+        PRIORITIZES recent synthetic data over historical.
         """
         cache_key = f"{dataset_name}_{key_column}"
         
-        # Verificar cache
+        # Check cache first
         if cache_key in self._cache:
             logger.debug(f"Using cached keys for {cache_key}")
             return self._cache[cache_key]
@@ -35,7 +35,7 @@ class ReferenceDataManager:
         
         all_keys = []
         
-        # 1. PRIORIZAR dados sintéticos recentes
+        # 1. PRIORITIZE recent synthetic data (within cache_days)
         synthetic_files = list(self.synthetic_dir.glob(f"{dataset_name}_synthetic_*.parquet"))
         
         if synthetic_files:
@@ -50,7 +50,7 @@ class ReferenceDataManager:
                 except Exception as e:
                     logger.warning(f"Error reading {file}: {e}")
         
-        # 2. Se não houver sintéticos, usar históricos
+        # 2. If no keys found in recent synthetic data, fallback to historical data
         if not all_keys:
             logger.info(f"No synthetic data found, loading from historical data")
             historical_files = list(self.data_dir.glob(f"{dataset_name}*.parquet"))
@@ -63,7 +63,7 @@ class ReferenceDataManager:
                 except Exception as e:
                     logger.warning(f"Error reading {file}: {e}")
         
-        # Remover duplicatas
+        # Deduplicate keys
         unique_keys = list(set(all_keys))
         
         if not unique_keys:
@@ -74,7 +74,7 @@ class ReferenceDataManager:
         
         logger.info(f"Loaded {len(unique_keys):,} unique keys for {dataset_name}.{key_column}")
         
-        # Cachear
+        # Cache the keys for future use
         self._cache[cache_key] = unique_keys
         
         return unique_keys
@@ -86,15 +86,15 @@ class ReferenceDataManager:
         strategy: str = "random"
     ) -> List[str]:
         """
-        Amostra chaves de uma lista.
-        
+        Samples keys from a list.
+
         Args:
-            keys: Lista de chaves disponíveis
-            n: Número de chaves a amostrar
-            strategy: 'random' ou 'recent'
+            keys: List of available keys to sample from
+            n: Number of keys to sample
+            strategy: 'random' or 'recent'
         
         Returns:
-            Lista de chaves amostradas
+            List of sampled keys
         """
         import random
         
@@ -111,7 +111,7 @@ class ReferenceDataManager:
         if strategy == "random":
             return random.sample(keys, n)
         elif strategy == "recent":
-            # Assumir que últimas chaves são mais recentes
+            # Presume keys are ordered by recency (if loaded from synthetic data first)
             return keys[-n:]
         else:
             return random.sample(keys, n)
@@ -124,25 +124,25 @@ class ReferenceDataManager:
         additional_columns: Optional[List[str]] = None
     ) -> pl.DataFrame:
         """
-        Obtém dados completos para chaves específicas.
+        Obtains related data for a list of keys from a reference dataset, including additional columns if specified.
         
         Args:
-            dataset_name: Nome do dataset
-            key_column: Coluna de chave
-            key_values: Valores de chave para buscar
-            additional_columns: Colunas adicionais para retornar
+            dataset_name: Dataset name to search (e.g., 'customers')
+            key_column: Key column name to filter by (e.g., 'customer_id')
+            key_values: List of key values to search for
+            additional_columns: List of additional columns to return
         
         Returns:
-            DataFrame com dados relacionados
+            DataFrame with related data
         """
         logger.info(f"Getting related data for {len(key_values)} keys from {dataset_name}")
         
-        # Colunas para ler
+        # Columns to read
         columns = [key_column]
         if additional_columns:
             columns.extend(additional_columns)
         
-        # Buscar em históricos
+        # Look for data in recent synthetic files
         historical_files = list(self.data_dir.glob(f"{dataset_name}*.parquet"))
         
         dfs = []
@@ -162,6 +162,6 @@ class ReferenceDataManager:
         return result
     
     def clear_cache(self):
-        """Limpa cache de referências"""
+        """Clears the reference cache"""
         self._cache.clear()
         logger.info("Reference cache cleared")

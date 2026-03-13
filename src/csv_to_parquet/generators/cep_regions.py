@@ -1,6 +1,6 @@
 """
-Mapeamento de regiões de CEP brasileiro para coordenadas aproximadas.
-Baseado na estrutura real de CEPs do Brasil.
+Mapping of Brazilian CEP regions to approximate coordinates.
+Based on the real structure of Brazilian CEPs (ZIP codes).
 """
 # Mapeamento de prefixos de CEP para estados e coordenadas aproximadas
 CEP_REGIONS = {
@@ -149,35 +149,35 @@ ADDITIONAL_REGIONS = {
 
 def get_region_info(cep_prefix: int):
     """
-    Retorna informações de região baseado no prefixo do CEP.
+    Returns region information based on CEP prefix.
     
     Args:
-        cep_prefix: Prefixo do CEP (5 primeiros dígitos)
+        cep_prefix: CEP prefix (first 5 digits)
     
     Returns:
-        Tupla (state, city, lat, lng)
+        Tuple (state, city, lat, lng)
     """
     import random
     
-    # Tentar encontrar por primeiro dígito
+    # Try to find region by first digit
     first_digit = cep_prefix // 10000
     
     if first_digit in CEP_REGIONS:
         region = CEP_REGIONS[first_digit]
     else:
-        # Tentar por dois primeiros dígitos
+        # Try to find region by the first two digits (for special cases)
         two_digits = cep_prefix // 1000
         if two_digits in ADDITIONAL_REGIONS:
             region = ADDITIONAL_REGIONS[two_digits]
         else:
-            # Fallback: usar São Paulo
+            # Fallback: use São Paulo as default
             region = CEP_REGIONS[1]
     
-    # Escolher cidade aleatória da região
+    # Pick a random city from the region and add some random noise to coordinates
     city, lat, lng = random.choice(region['cities'])
     state = region['state']
     
-    # Adicionar variação aleatória (±0.1 graus ≈ 11km)
+    # Add random variation (±0.1 degrees ≈ 11km)
     lat += random.uniform(-0.1, 0.1)
     lng += random.uniform(-0.1, 0.1)
     
@@ -185,25 +185,25 @@ def get_region_info(cep_prefix: int):
 
 def validate_cep(cep):
     """
-    Valida se um CEP está no formato correto.
+    Validates if a ZIP code is in the correct format.
     
     Args:
-        cep: CEP como int ou string
+        cep: ZIP code as int or string
     
     Returns:
-        CEP validado como int ou None
+        Validated ZIP code as int or None
     """
     try:
         if isinstance(cep, str):
-            # Remover hífens e espaços
+            # Remove hyphens and spaces
             cep = cep.replace('-', '').replace(' ', '')
             cep = int(cep)
         
-        # CEP deve ter 5 dígitos (prefixo) ou 8 dígitos (completo)
-        if 1000 <= cep <= 99999:  # Prefixo
+        # ZIP code must have 5 digits (prefix) or 8 digits (complete)
+        if 1000 <= cep <= 99999:  # Prefix
             return cep
-        elif 10000000 <= cep <= 99999999:  # Completo
-            return cep // 1000  # Retornar apenas prefixo
+        elif 10000000 <= cep <= 99999999:  # Complete
+            return cep // 1000  # Return only the prefix
         else:
             return None
     except:

@@ -12,7 +12,7 @@ from data_utils.log_config import logs_config
 logger = logs_config()
 
 class PolarsGenerator(BaseSyntheticGenerator):
-    """Gerador de dados sintéticos usando Polars"""
+    """Generates synthetic data using Polars, with special handling for geolocation datasets based on CEPs (Brazilian ZIP codes)."""
     
     def __init__(
         self, 
@@ -28,12 +28,12 @@ class PolarsGenerator(BaseSyntheticGenerator):
         self.dependencies = dependencies or []
     
     def get_engine_name(self) -> str:
-        """Retorna nome do engine (polars)"""
+        """Returns the name of the engine (polars)"""
         return "polars"
     
     def generate(self, n_rows: int, output_filename: str) -> Path:
         """
-        Gera dados sintéticos usando Polars.
+        Generates synthetic data using Polars.
         """
         # DEBUG
         logger.info(f"🔍 DEBUG: output_filename = {output_filename}")
@@ -47,7 +47,7 @@ class PolarsGenerator(BaseSyntheticGenerator):
         else:
             logger.info(f"Generating {n_rows:,} synthetic rows with Polars")
         
-        # DETECTAR SE É GEOLOCATION
+        # DETECT IF IT IS GEOLOCATION BASED ON FILENAME
         is_geolocation = 'geolocation' in output_filename.lower()
         
         logger.info(f"🔍 is_geolocation = {is_geolocation}")
@@ -63,11 +63,11 @@ class PolarsGenerator(BaseSyntheticGenerator):
         
         logger.info("📊 Using normal generation")
         
-        # Geração normal
+        # Usual generation for non-geolocation datasets
         data = {}
         base_dates = None
         
-        # Primeira passagem: gerar coluna de data primária
+        # First pass: generate primary date column if exists (to use as base for correlated columns)
         primary_date_col = None
         for col_name, col_profile in self.profile.get("columns", {}).items():
             if col_profile.get("type") == "datetime":
@@ -75,14 +75,14 @@ class PolarsGenerator(BaseSyntheticGenerator):
                     primary_date_col = col_name
                     break
         
-        # Gerar coluna de data primária primeiro
+        # Generate coluns of primary date first to use as base for correlated columns
         if primary_date_col:
             col_profile = self.profile["columns"][primary_date_col]
             logger.debug(f"Generating primary date column: {primary_date_col}")
             base_dates = self.generate_column_data(primary_date_col, col_profile, n_rows)
             data[primary_date_col] = base_dates
         
-        # Segunda passagem: gerar outras colunas
+        # Second pass: generate other columns, using base_dates for correlation if needed
         for col_name, col_profile in self.profile.get("columns", {}).items():
             if col_name in data:
                 continue
@@ -95,10 +95,10 @@ class PolarsGenerator(BaseSyntheticGenerator):
                 base_dates=base_dates
             )
         
-        # Criar DataFrame
+        # Create DataFrame
         df = pl.DataFrame(data)
         
-        # Salvar
+        # Save Parquet
         output_path = self.output_dir / output_filename
         df.write_parquet(output_path, compression="snappy")
         
@@ -114,11 +114,11 @@ class PolarsGenerator(BaseSyntheticGenerator):
     
     def _generate_geolocation(self, n_rows: int, output_filename: str) -> Path:
         """
-        Gera dados de geolocalização com correlação CEP → coordenadas.
+        Generates geolocation data with correlation between CEP (ZIP code) and coordinates (latitude, longitude), as well as city and state information.
         """
         logger.info(f"🗺️  Generating {n_rows:,} geolocation rows with CEP correlation")
         
-        # Obter CEPs dos customers
+        # Obtain CEPs from reference manager based on dependencies (e.g., customers dataset)
         customer_ceps = []
         
         if self.dependencies and self.reference_manager:
@@ -141,7 +141,7 @@ class PolarsGenerator(BaseSyntheticGenerator):
                     
                     break
         
-        # Fallback: usar histórico
+        # Fallback: use historical CEPs from profile if not found in reference manager
         if not customer_ceps:
             logger.warning("⚠️  No customer CEPs found, using historical CEPs")
             for col_name, col_profile in self.profile.get("columns", {}).items():
@@ -155,7 +155,7 @@ class PolarsGenerator(BaseSyntheticGenerator):
         if not customer_ceps:
             raise ValueError("❌ No CEPs available for geolocation generation")
         
-        # Amostrar CEPs
+        # Sample CEPs (ZIP codes)
         logger.info(f"🎲 Sampling {n_rows} CEPs from {len(customer_ceps):,} available")
         
         sampled_ceps = self.reference_manager.sample_keys(
@@ -166,7 +166,7 @@ class PolarsGenerator(BaseSyntheticGenerator):
         
         logger.info(f"✅ Sampled {len(sampled_ceps):,} CEPs")
         
-        # Gerar dados correlacionados
+        # Generate correlated geolocation data based on sampled CEPs
         data = {
             'geolocation_zip_code_prefix': [],
             'geolocation_lat': [],
@@ -178,13 +178,13 @@ class PolarsGenerator(BaseSyntheticGenerator):
         logger.info("🌍 Generating coordinates for each CEP...")
         
         for i, cep in enumerate(sampled_ceps):
-            # Validar CEP
+            # Validate CEP
             cep_int = validate_cep(cep)
             
             if cep_int is None:
                 cep_int = 1000
             
-            # Obter informações da região
+            # Obtain region info based on CEP prefix
             state, city, lat, lng = get_region_info(cep_int)
             
             data['geolocation_zip_code_prefix'].append(cep)
@@ -195,10 +195,10 @@ class PolarsGenerator(BaseSyntheticGenerator):
         
         logger.info("✅ Coordinates generated for all CEPs")
         
-        # Criar DataFrame
+        # Create DataFrame
         df = pl.DataFrame(data)
         
-        # Salvar
+        # Save Parquet
         output_path = self.output_dir / output_filename
         df.write_parquet(output_path, compression="snappy")
         
@@ -210,7 +210,7 @@ class PolarsGenerator(BaseSyntheticGenerator):
             f"({file_size_mb:.2f} MB)"
         )
         
-        # Estatísticas
+        # Statistics
         logger.info(f"📊 CEPs únicos: {df['geolocation_zip_code_prefix'].n_unique():,}")
         logger.info(f"📊 Estados: {df['geolocation_state'].n_unique()}")
         logger.info(f"📊 Cidades: {df['geolocation_city'].n_unique()}")
@@ -225,14 +225,16 @@ class PolarsGenerator(BaseSyntheticGenerator):
         base_dates: Optional[List[datetime]] = None
     ) -> list:
         """
-        Gera dados para uma coluna baseado no perfil.
+        Generates data for a column based on its profile, with special handling for geolocation datasets to ensure correlation between CEP and coordinates. 
+        For geolocation datasets, it uses the sampled CEPs to generate corresponding latitude, longitude, city, and state information. 
+        For other columns, it generates data based on type and profile specifications, optionally using base_dates for correlated datetime generation.
         """
         col_type = col_profile.get("type", "unknown")
         null_rate = col_profile.get("null_rate", 0)
         
         values = []
         
-        # Geração de IDs únicos
+        # Generation of unique IDs with specific patterns
         if col_type == "id":
             id_pattern = col_profile.get("id_pattern", "custom")
             
@@ -257,7 +259,7 @@ class PolarsGenerator(BaseSyntheticGenerator):
             
             return values
         
-        # Geração normal para outros tipos
+        # Normal generation for other types
         for i in range(n_rows):
             if random.random() < null_rate:
                 values.append(None)

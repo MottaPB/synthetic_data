@@ -10,7 +10,7 @@ from data_utils.log_config import logs_config
 logger = logs_config()
 
 class SyntheticDataPipeline:
-    """Pipeline de geração de dados sintéticos"""
+    """Pipeline for synthetic data generation"""
     
     def __init__(
         self, 
@@ -29,7 +29,7 @@ class SyntheticDataPipeline:
         
         self.state_manager = StateManager(state_file)
         
-        # Carregar configuração
+        # Load configuration
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
         
@@ -42,13 +42,13 @@ class SyntheticDataPipeline:
         force: bool = False
     ) -> Optional[Path]:
         """
-        Gera dados sintéticos para um dataset com progressão temporal.
+        Generates synthetic data for a dataset with temporal progression.
         """
         logger.info("=" * 60)
         logger.info(f"Generating synthetic data for: {dataset_name}")
         logger.info("=" * 60)
         
-        # Verificar se já gerou hoje
+        # Check if there was any synthetic generation today for this dataset
         if not force and not self.state_manager.should_generate_today(dataset_name):
             logger.warning(
                 f"⏭️  Skipping {dataset_name}: Already generated today. "
@@ -56,29 +56,29 @@ class SyntheticDataPipeline:
             )
             return None
         
-        # Obter configuração do dataset
+        # Obtain dataset configuration
         if dataset_name not in self.config["datasets"]:
             raise ValueError(f"Dataset not found in config: {dataset_name}")
         
         ds_config = self.config["datasets"][dataset_name]
         
-        # Número de linhas
+        # Row count
         if n_rows is None:
             n_rows = ds_config["target_rows_per_day"]
         
         logger.info(f"Target rows: {n_rows:,}")
         
-        # Determinar data alvo
+        # Determine target date
         date_column = ds_config.get("date_column")
         
         if date_column:
-            # Dataset tem coluna de data - calcular próxima data
+            # Dataset has date column - calculate next date based on historical data
             profiler = StatisticalProfiler(
                 self.data_dir, 
                 lookback_days=ds_config["lookback_days"]
             )
             
-            # Obter data máxima dos dados históricos
+            # Obtain maximum date from historical data
             historical_max_date = profiler.get_max_date(
                 file_pattern=ds_config["file_pattern"],
                 date_column=date_column
@@ -92,7 +92,7 @@ class SyntheticDataPipeline:
             
             logger.info(f"Historical max date: {historical_max_date}")
             
-            # Calcular próxima data sintética
+            # Calculate next synthetic date
             target_date = self.state_manager.get_next_synthetic_date(
                 dataset_name, 
                 historical_max_date
@@ -100,11 +100,11 @@ class SyntheticDataPipeline:
             
             logger.info(f"Target synthetic date: {target_date}")
         else:
-            # Dataset sem coluna de data
+            # Dataset has no date column
             target_date = None
             logger.info("Dataset has no date column, generating without date constraint")
         
-        # Analisar perfil estatístico
+        # Analyze statistical profile
         profiler = StatisticalProfiler(
             self.data_dir, 
             lookback_days=ds_config["lookback_days"]
@@ -121,7 +121,7 @@ class SyntheticDataPipeline:
             f"{ds_config['lookback_days']} days"
         )
         
-        # Selecionar engine
+        # Select engine
         engine = self.config["generation"]["engine"]
         spark_threshold = self.config["generation"]["spark_threshold_rows"]
         
@@ -131,20 +131,20 @@ class SyntheticDataPipeline:
                 f"Consider implementing Spark generator."
             )
         
-        # Gerar dados
+        # Generate data
         if engine == "polars":
-            # Criar reference manager
+            # Create reference manager
             reference_manager = ReferenceDataManager(
                 data_dir=self.data_dir,
                 synthetic_dir=self.output_dir
             )
             
-            # Obter dependências do config
+            # Obtain dependencies from config
             dependencies = ds_config.get("dependencies", [])
             
             logger.info(f"Creating generator with {len(dependencies)} dependencies")
             
-            # Criar gerador com todas as dependências
+            # Create generator with all dependencies
             generator = PolarsGenerator(
                 profile=profile,
                 output_dir=self.output_dir,
@@ -155,7 +155,7 @@ class SyntheticDataPipeline:
         else:
             raise NotImplementedError(f"Engine not implemented: {engine}")
         
-        # Nome do arquivo com data sintética
+        # File name with date suffix if applicable
         if target_date:
             date_suffix = target_date.strftime("%Y%m%d")
         else:
@@ -163,11 +163,11 @@ class SyntheticDataPipeline:
         
         output_filename = f"{dataset_name}_synthetic_{date_suffix}.parquet"
         
-        # ========== GERAR O ARQUIVO ==========
+        # ========== GENERATE FILE ==========
         output_path = generator.generate(n_rows, output_filename)
         # =====================================
         
-        # Atualizar estado
+        # Update status in state manager
         if target_date:
             execution_info = {
                 "rows_generated": n_rows,
@@ -193,24 +193,24 @@ class SyntheticDataPipeline:
     
     def get_dataset_status(self, dataset_name: str) -> Dict:
         """
-        Obtém status atual de um dataset.
-        
+        Obtain current status of a dataset.
+
         Args:
-            dataset_name: Nome do dataset
+            dataset_name: Dataset name to check status for
         
         Returns:
-            Dict com informações de status
+            Dict with status information
         """
         logger.info(f"Getting status for {dataset_name}")
         
-        # Info do state manager
+        # State manager info
         state_info = self.state_manager.get_dataset_info(dataset_name)
         
-        # Verificar se pode gerar hoje
+        # Check if it can generate today
         can_generate = self.state_manager.should_generate_today(dataset_name)
         state_info["can_generate_today"] = can_generate
         
-        # Calcular próxima data se possível
+        # Calculate next synthetic date if dataset has date column
         if dataset_name in self.config["datasets"]:
             ds_config = self.config["datasets"][dataset_name]
             date_column = ds_config.get("date_column")
@@ -247,18 +247,18 @@ class SyntheticDataPipeline:
         force: bool = False
     ) -> Dict:
         """
-        Gera datasets respeitando ordem de dependências (por nível).
+        Generate datasets respecting dependency order (by level).
         
         Args:
-            n_rows_override: Override de linhas por dataset
-            force: Forçar geração
+            n_rows_override: Override of rows per dataset
+            force: Force generation
         
         Returns:
-            Resultados por dataset
+            Results per dataset
         """
         logger.info("Starting ordered generation (respecting dependencies)")
         
-        # Agrupar por nível
+        # Group by level
         datasets_by_level = {}
         for ds_name, ds_config in self.config["datasets"].items():
             level = ds_config.get("level", 0)
@@ -268,7 +268,7 @@ class SyntheticDataPipeline:
         
         results = {}
         
-        # Gerar por nível (0, 1, 2, ...)
+        # Generate by level (0, 1, 2, ...)
         for level in sorted(datasets_by_level.keys()):
             logger.info("=" * 60)
             logger.info(f"GENERATING LEVEL {level} DATASETS")

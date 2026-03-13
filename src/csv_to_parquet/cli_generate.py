@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-CLI para geração de dados sintéticos
+CLI to generate synthetic data based on historical profiles, with status and reset options.
 """
 import argparse
 from pathlib import Path
@@ -73,28 +73,28 @@ def main():
     
     args = parser.parse_args()
     
-    # Criar pipeline
+    # Create pipeline
     pipeline = SyntheticDataPipeline(
         config_path=args.config,
         data_dir=args.data_dir,
         output_dir=args.output_dir
     )
     
-    # ========== ADICIONAR LÓGICA DE STATUS ==========
+    # ========== ADD STATUS LOGIC ==========
     
-    # Comando: --status
+    # Command: --status
     if args.status:
         logger.info("Getting generation status...")
         
         if args.dataset:
-            # Status de um dataset específico
+            # Specific dataset status
             status = pipeline.get_dataset_status(args.dataset)
             print("\n" + "=" * 60)
             print(f"STATUS: {args.dataset}")
             print("=" * 60)
             print(json.dumps(status, indent=2, default=str))
         else:
-            # Status de todos os datasets
+            # Status of all datasets
             print("\n" + "=" * 60)
             print("STATUS: ALL DATASETS")
             print("=" * 60)
@@ -106,7 +106,7 @@ def main():
         
         return
     
-    # Comando: --reset
+    # Command: --reset
     if args.reset:
         if not args.dataset:
             logger.error("Error: --reset requires --dataset")
@@ -120,15 +120,15 @@ def main():
     
     # ===============================================
     
-    # Gerar dados
+    # Generate data
     if args.dataset:
-        # Dataset específico
+        # Specific dataset
         logger.info(f"Generating dataset: {args.dataset}")
         
         output_path = pipeline.generate_dataset(
             dataset_name=args.dataset,
             n_rows=args.rows,
-            force=args.force  # ← Adicionar force
+            force=args.force  # ← Add force
         )
         
         if output_path:
@@ -139,21 +139,21 @@ def main():
             print("\n⏭️  Generation skipped (already done today)")
             print("💡 Use --force to generate anyway")
     else:
-        # Todos os datasets
+        # All datasets
         logger.info("Generating all datasets...")
         
         n_rows_override = {}
         if args.rows:
-            # Aplicar mesmo número para todos
+            # Apply same number to all
             for ds in pipeline.config["datasets"].keys():
                 n_rows_override[ds] = args.rows
         
         results = pipeline.generate_all_datasets(
             n_rows_override=n_rows_override,
-            force=args.force  # ← Adicionar force
+            force=args.force  # ← Add force
         )
         
-        # Mostrar resumo
+        # Show summary
         print("\n" + "=" * 60)
         print("GENERATION SUMMARY")
         print("=" * 60)

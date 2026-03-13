@@ -5,8 +5,8 @@ from data_utils.log_config import logs_config
 logger = logs_config()
 
 class BaseSyntheticGenerator(ABC):
-    """Classe base abstrata para geradores de dados sintéticos"""
-    
+    """Abstract base class for synthetic data generators"""
+
     def __init__(self, profile: Dict[str, Any], output_dir: Path):
         self.profile = profile
         self.output_dir = output_dir
@@ -15,31 +15,31 @@ class BaseSyntheticGenerator(ABC):
     @abstractmethod
     def generate(self, n_rows: int, output_filename: str) -> Path:
         """
-        Gera dados sintéticos.
+        Create synthetic data and save as Parquet file.
         
         Args:
-            n_rows: Número de linhas a gerar
-            output_filename: Nome do arquivo de saída
+            n_rows: Row count to generate
+            output_filename: Output file name (without extension)
         
         Returns:
-            Path do arquivo gerado
+            Path for the generated Parquet file
         """
         pass
     
     @abstractmethod
     def get_engine_name(self) -> str:
-        """Retorna nome do engine (polars, spark, etc.)"""
+        """Returns engine name (polars, spark, etc.)"""
         pass
     
     def should_switch_engine(self, n_rows: int, threshold: int) -> bool:
         """
-        Verifica se deve trocar de engine baseado no número de linhas.
+        Verifies if it should switch engines based on the number of rows.
         
         Args:
-            n_rows: Número de linhas a gerar
-            threshold: Limite para troca
+            n_rows: NNumber of rows to generate
+            threshold: Limit for switching engines
         
         Returns:
-            True se deve trocar
+            True if it should switch engines
         """
         return n_rows > threshold
